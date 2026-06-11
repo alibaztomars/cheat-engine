@@ -14,47 +14,38 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # Install Lazarus 2.2.2 + cross-compiler directly via the official installers.
-      # We use the FreePascal mirror (mirrors.ibiblio.org) instead of SourceForge
-      # because SourceForge uses multi-hop redirects that break in CI environments.
       - name: Install Lazarus 2.2.2
+        uses: gcarreno/setup-lazarus@v3
+        with:
+          lazarus-version: '2.2.2'
+          with-cache: false
+
+      # setup-lazarus installs Lazarus source + binaries but does NOT
+      # pre-compile the packages. The .ppu files for lazutils, LCL, synedit
+      # etc. don't exist yet, so lazbuild can't resolve laz_avl_Tree.
+      # "make all" compiles every package into .ppu files first.
+      - name: Pre-compile Lazarus packages
         shell: pwsh
         run: |
-          $mirror = "https://mirrors.ibiblio.org/pub/mirrors/sourceforge/l/la/lazarus"
-          $base   = "$mirror/Lazarus%20Windows%2064%20bits/Lazarus%202.2.2"
+          # Discover where setup-lazarus actually installed Lazarus
+          $lazDir = (Get-Command lazbuild).Source | Split-Path
+          Write-Host "Lazarus dir: $lazDir"
 
-          Write-Host "Downloading Lazarus 2.2.2 main installer..."
-          Invoke-WebRequest "$base/lazarus-2.2.2-fpc-3.2.2-win64.exe" -OutFile "$env:TEMP\laz.exe"
+          $fpcExe = Get-ChildItem "$lazDir\fpc" -Recurse -Filter "fpc.exe" |
+                    Where-Object { $_.FullName -like "*x86_64-win64*" } |
+                    Select-Object -First 1 -ExpandProperty FullName
+          Write-Host "FPC: $fpcExe"
 
-          Write-Host "Downloading Lazarus 2.2.2 cross-compiler (i386-win32)..."
-          Invoke-WebRequest "$base/lazarus-2.2.2-fpc-3.2.2-cross-i386-win32-win64.exe" -OutFile "$env:TEMP\laz-cross.exe"
+          $fpcDir = $fpcExe | Split-Path | Split-Path | Split-Path
 
-          Write-Host "Installing main Lazarus..."
-          Start-Process "$env:TEMP\laz.exe" -ArgumentList "/verysilent", "/norestart", "/dir=C:\lazarus" -Wait
+          Push-Location $lazDir
+          & make all FPC="$fpcExe" FPCDIR="$fpcDir"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
 
-          Write-Host "Installing cross-compiler..."
-          Start-Process "$env:TEMP\laz-cross.exe" -ArgumentList "/verysilent", "/norestart", "/dir=C:\lazarus" -Wait
-
-          Write-Host "Done. Lazarus installed to C:\lazarus"
-
-      - name: Add Lazarus and FPC to PATH
-        shell: pwsh
-        run: |
-          $lazDir = "C:\lazarus"
-          $fpcBin = "$lazDir\fpc\3.2.2\bin\x86_64-win64"
-          echo "$lazDir"  | Out-File -FilePath $env:GITHUB_PATH -Append
-          echo "$fpcBin"  | Out-File -FilePath $env:GITHUB_PATH -Append
-
-      # The Lazarus installer ships with pre-compiled .ppu files for all
-      # core packages (lazutils, LCL, synedit, etc.) when installed from
-      # the official installer — unlike gcarreno/setup-lazarus which only
-      # extracts sources. So lazbuild can resolve laz_avl_Tree immediately.
       - name: Build Cheat Engine
         shell: cmd
-        run: |
-          set LAZARUSDIR=C:\lazarus
-          set PATH=%LAZARUSDIR%;%LAZARUSDIR%\fpc\3.2.2\bin\x86_64-win64;%PATH%
-          lazbuild -B --build-mode=Release "Cheat Engine\cheatengine.lpi"
+        run: lazbuild -B --build-mode=Release "Cheat Engine\cheatengine.lpi"
 
       - name: Upload Compiled Binary
         uses: actions/upload-artifact@v4
