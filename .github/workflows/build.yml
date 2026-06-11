@@ -19,12 +19,11 @@ jobs:
       with:
         lazarus-version: 'stable'
 
-    - name: Build Cheat Engine Dependencies and Main App
+    - name: Build Cheat Engine Main App
       run: |
         cd "Cheat Engine"
-        # --add-package lazutils ekleyerek bulamadığı unit hatasını bypass ediyoruz
-        lazbuild --add-package lazutils
-        lazbuild --primary-config-path=. cheatengine.lpi --build-mode=Release
+        # --userdir parametresi ile Lazarus'un kurulu olduğu dizindeki tüm bileşenleri (lazutils dahil) zorunlu olarak projeye dahil ediyoruz
+        lazbuild --userdir="C:\Users\runneradmin\AppData\Local\lazarus" --primary-config-path=. cheatengine.lpi --build-mode=Release
 
     - name: Upload Compiled Binary
       uses: actions/upload-artifact@v4
