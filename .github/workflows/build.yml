@@ -20,34 +20,29 @@ jobs:
           lazarus-version: '2.2.2'
           with-cache: false
 
-      # Install the cross-compiler so CE's win32 target can link
+      # SourceForge /download URLs are redirect pages, not direct file links.
+      # curl follows all redirects and handles SourceForge mirrors correctly.
       - name: Install FPC cross-compiler (i386-win32)
-        shell: pwsh
-        run: |
-          $url = "https://sourceforge.net/projects/lazarus/files/Lazarus%20Windows%2064%20bits/Lazarus%202.2.2/lazarus-2.2.2-fpc-3.2.2-cross-i386-win32-win64.exe/download"
-          $out = "$env:TEMP\laz-cross.exe"
-          Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
-          Start-Process -FilePath $out -ArgumentList "/verysilent","/norestart" -Wait
-
-      # setup-lazarus installs Lazarus but does NOT pre-compile its packages
-      # (lazutils, LCL, synedit, etc.). Without compiled .ppu files lazbuild
-      # cannot resolve units like laz_avl_Tree even though the source is present.
-      # Running "make all" compiles every Lazarus package for both targets.
-      - name: Compile Lazarus packages (make all)
         shell: cmd
         run: |
-          set LAZARUSDIR=D:\a\_temp\installers\lazarus
-          set FPCDIR=%LAZARUSDIR%\fpc\3.2.2
-          set FPC=%FPCDIR%\bin\x86_64-win64\fpc.exe
-          set PATH=%FPCDIR%\bin\x86_64-win64;%PATH%
-          cd /d %LAZARUSDIR%
+          curl -L -o "%TEMP%\laz-cross.exe" "https://sourceforge.net/projects/lazarus/files/Lazarus%%20Windows%%2064%%20bits/Lazarus%%202.2.2/lazarus-2.2.2-fpc-3.2.2-cross-i386-win32-win64.exe/download"
+          "%TEMP%\laz-cross.exe" /verysilent /norestart
+
+      # setup-lazarus installs Lazarus files but does NOT pre-compile the packages.
+      # Without running "make all" first, the lazutils/lcl/synedit .ppu files don't
+      # exist yet, so lazbuild cannot resolve laz_avl_Tree and other units.
+      - name: Pre-compile Lazarus packages (make all)
+        shell: cmd
+        run: |
+          set LAZDIR=D:\a\_temp\installers\lazarus
+          set FPC=%LAZDIR%\fpc\3.2.2\bin\x86_64-win64\fpc.exe
+          set FPCDIR=%LAZDIR%\fpc\3.2.2
+          cd /d %LAZDIR%
           make all FPC="%FPC%" FPCDIR="%FPCDIR%"
 
       - name: Build Cheat Engine
         shell: cmd
         run: |
-          set LAZARUSDIR=D:\a\_temp\installers\lazarus
-          set PATH=%LAZARUSDIR%\fpc\3.2.2\bin\x86_64-win64;%PATH%
           lazbuild -B --build-mode=Release "Cheat Engine\cheatengine.lpi"
 
       - name: Upload Compiled Binary
