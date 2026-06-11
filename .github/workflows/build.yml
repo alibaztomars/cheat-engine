@@ -14,38 +14,44 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # Pin to exactly 2.2.2 — CE's README explicitly requires this version.
-      # Newer Lazarus (3.x, 4.x) breaks the build in multiple ways.
-      # Do NOT pass --primary-config-path or --userdir overrides to lazbuild;
-      # setup-lazarus already writes a correct environmentoptions.xml that
-      # knows where lazutils (laz_avl_Tree) and all other packages live.
       - name: Install Lazarus 2.2.2
         uses: gcarreno/setup-lazarus@v3
         with:
           lazarus-version: '2.2.2'
-          with-cache: false   # caching is broken for Windows in this action
+          with-cache: false
 
-      # The cross-compiler is required because CE's release build mode targets
-      # win32 as well. Without it lazbuild fails when it hits the 32-bit target.
-      - name: Install FPC cross-compiler (win32 target)
+      # Install the cross-compiler so CE's win32 target can link
+      - name: Install FPC cross-compiler (i386-win32)
         shell: pwsh
         run: |
           $url = "https://sourceforge.net/projects/lazarus/files/Lazarus%20Windows%2064%20bits/Lazarus%202.2.2/lazarus-2.2.2-fpc-3.2.2-cross-i386-win32-win64.exe/download"
           $out = "$env:TEMP\laz-cross.exe"
-          Write-Host "Downloading cross-compiler..."
           Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
-          Write-Host "Installing cross-compiler silently..."
           Start-Process -FilePath $out -ArgumentList "/verysilent","/norestart" -Wait
-          Write-Host "Done."
+
+      # setup-lazarus installs Lazarus but does NOT pre-compile its packages
+      # (lazutils, LCL, synedit, etc.). Without compiled .ppu files lazbuild
+      # cannot resolve units like laz_avl_Tree even though the source is present.
+      # Running "make all" compiles every Lazarus package for both targets.
+      - name: Compile Lazarus packages (make all)
+        shell: cmd
+        run: |
+          set LAZARUSDIR=D:\a\_temp\installers\lazarus
+          set FPCDIR=%LAZARUSDIR%\fpc\3.2.2
+          set FPC=%FPCDIR%\bin\x86_64-win64\fpc.exe
+          set PATH=%FPCDIR%\bin\x86_64-win64;%PATH%
+          cd /d %LAZARUSDIR%
+          make all FPC="%FPC%" FPCDIR="%FPCDIR%"
 
       - name: Build Cheat Engine
         shell: cmd
         run: |
+          set LAZARUSDIR=D:\a\_temp\installers\lazarus
+          set PATH=%LAZARUSDIR%\fpc\3.2.2\bin\x86_64-win64;%PATH%
           lazbuild -B --build-mode=Release "Cheat Engine\cheatengine.lpi"
 
       - name: Upload Compiled Binary
         uses: actions/upload-artifact@v4
         with:
           name: Compiled-Cheat-Engine
-          path: |
-            Cheat Engine/bin/
+          path: Cheat Engine/bin/
