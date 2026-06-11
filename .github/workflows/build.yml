@@ -11,23 +11,41 @@ jobs:
     runs-on: windows-2022
 
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Install Lazarus and Free Pascal
-      uses: gcarreno/setup-lazarus@v3
-      with:
-        lazarus-version: 'stable'
+      # Pin to exactly 2.2.2 — CE's README explicitly requires this version.
+      # Newer Lazarus (3.x, 4.x) breaks the build in multiple ways.
+      # Do NOT pass --primary-config-path or --userdir overrides to lazbuild;
+      # setup-lazarus already writes a correct environmentoptions.xml that
+      # knows where lazutils (laz_avl_Tree) and all other packages live.
+      - name: Install Lazarus 2.2.2
+        uses: gcarreno/setup-lazarus@v3
+        with:
+          lazarus-version: '2.2.2'
+          with-cache: false   # caching is broken for Windows in this action
 
-    - name: Build Cheat Engine Main App
-      run: |
-        cd "Cheat Engine"
-        # --userdir parametresi ile Lazarus'un kurulu olduğu dizindeki tüm bileşenleri (lazutils dahil) zorunlu olarak projeye dahil ediyoruz
-        lazbuild --userdir="C:\Users\runneradmin\AppData\Local\lazarus" --primary-config-path=. cheatengine.lpi --build-mode=Release
+      # The cross-compiler is required because CE's release build mode targets
+      # win32 as well. Without it lazbuild fails when it hits the 32-bit target.
+      - name: Install FPC cross-compiler (win32 target)
+        shell: pwsh
+        run: |
+          $url = "https://sourceforge.net/projects/lazarus/files/Lazarus%20Windows%2064%20bits/Lazarus%202.2.2/lazarus-2.2.2-fpc-3.2.2-cross-i386-win32-win64.exe/download"
+          $out = "$env:TEMP\laz-cross.exe"
+          Write-Host "Downloading cross-compiler..."
+          Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
+          Write-Host "Installing cross-compiler silently..."
+          Start-Process -FilePath $out -ArgumentList "/verysilent","/norestart" -Wait
+          Write-Host "Done."
 
-    - name: Upload Compiled Binary
-      uses: actions/upload-artifact@v4
-      with:
-        name: Compiled-Cheat-Engine
-        path: |
-          Cheat Engine/bin/
+      - name: Build Cheat Engine
+        shell: cmd
+        run: |
+          lazbuild -B --build-mode=Release "Cheat Engine\cheatengine.lpi"
+
+      - name: Upload Compiled Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: Compiled-Cheat-Engine
+          path: |
+            Cheat Engine/bin/
