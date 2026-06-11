@@ -1,0 +1,29 @@
+name: Build Cheat Engine
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Install Lazarus and Free Pascal
+      uses: gcarreno/setup-lazarus@v3
+      with:
+        lazarus-version: 'stable'
+
+    - name: Build Cheat Engine
+      run: |
+        cd "Cheat Engine"
+        lazbuild --build-mode=Release cheatengine.lpi
+
+    - name: Upload Compiled Binary
+      uses: actions/upload-artifact@v4
+      with:
+        name: Compiled-Cheat-Engine
+        path: |
+          Cheat Engine/bin/
